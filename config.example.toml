@@ -1,0 +1,41 @@
+[metrics]
+listen = "127.0.0.1:9099"
+
+[batch]
+wait = "3s"
+ack_mode = "queued" # queued: immediate AT OK; sent: wait for provider result
+
+[logging]
+level = "info" # debug, info, warn, error; server logs are JSON on stderr/journald
+
+# For local verification only; it logs the SMS without delivering it.
+[providers.dryrun]
+type = "log"
+
+[plugins]
+dir = "/usr/lib/virtualsms/plugins"
+
+# To enable AbleMobile, uncomment its provider, options, and device below.
+# It receives one form request per batch; Telephone joins numbers with ';'.
+#[providers.ablemobile]
+#plugin = "ablemobile"
+#
+#[providers.ablemobile.options]
+#username = "replace-me"
+#password = "replace-me"
+#user_define_no = "00000"
+#hex = ""
+#sender = ""
+#timeout = "30s"
+
+[[devices]]
+path = "/dev/ttySMS0"
+provider = "dryrun"
+group = "root"
+mode = 0o660
+
+#[[devices]]
+#path = "/dev/ttySMS1"
+#provider = "ablemobile"
+#group = "root"
+#mode = 0o660

@@ -1,0 +1,19 @@
+[Unit]
+Description=VirtualSMS serial modem service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/usr/bin/virtualsms -c /etc/virtualsms/config.toml check
+ExecStart=/usr/bin/virtualsms -c /etc/virtualsms/config.toml serve
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
