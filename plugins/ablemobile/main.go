@@ -9,6 +9,7 @@ import (
 
 var APIVersion = pluginapi.Version
 var ProviderID = "ablemobile"
+var ProviderVersion = "dev"
 
 // New decodes AbleMobile options and creates one provider instance.
 func New(cfg pluginapi.Config) (pluginapi.Provider, error) {

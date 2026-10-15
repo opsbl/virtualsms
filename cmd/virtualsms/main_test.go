@@ -125,3 +125,46 @@ func TestDirectTestShortFlags(t *testing.T) {
 		t.Fatalf("unexpected output: %q", output.String())
 	}
 }
+
+func TestPluginsListNeedsNoConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.so")
+	if err := os.WriteFile(path, []byte("invalid"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := command()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"plugins", "list", "-d", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ID", "VERSION", "API", "PATH", "STATUS", path, "open:"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("output %q missing %q", output.String(), want)
+		}
+	}
+}
+
+func TestPluginsListUsesConfiguredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.so")
+	if err := os.WriteFile(path, []byte("invalid"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	configText := "[plugins]\ndir = \"" + dir + "\"\n[instances.default]\nprovider = \"log\"\n[[devices]]\ninstance = \"default\"\npath = \"/dev/ttySMS0\"\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := command()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"-c", configPath, "plugins", "list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), path) {
+		t.Fatalf("output %q missing plugin path %q", output.String(), path)
+	}
+}

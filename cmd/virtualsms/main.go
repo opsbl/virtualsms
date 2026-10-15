@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"text/tabwriter"
 	"time"
 
 	"github.com/opsbl/virtualsms/internal/atclient"
@@ -42,6 +43,49 @@ func command() *cobra.Command {
 		}
 		return service.Run(cmd.Context(), c)
 	}})
+	var pluginDir string
+	plugins := &cobra.Command{Use: "plugins", Short: "Inspect provider plugins"}
+	list := &cobra.Command{Use: "list", Short: "List provider plugins and load status", RunE: func(cmd *cobra.Command, _ []string) error {
+		dir := pluginDir
+		if dir == "" {
+			dir = "/usr/lib/virtualsms/plugins"
+			if cmd.Root().PersistentFlags().Changed("config") {
+				c, err := config.Load(path)
+				if err != nil {
+					return err
+				}
+				if c.Plugins.Dir != "" {
+					dir = c.Plugins.Dir
+				}
+			}
+		}
+		found, err := provider.ListPlugins(dir)
+		if err != nil {
+			return err
+		}
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tVERSION\tAPI\tPATH\tSTATUS")
+		for _, p := range found {
+			id, version, api, status := p.ID, p.Version, "-", "OK"
+			if id == "" {
+				id = "-"
+			}
+			if version == "" {
+				version = "-"
+			}
+			if p.APIVersion != 0 {
+				api = fmt.Sprint(p.APIVersion)
+			}
+			if p.Err != nil {
+				status = p.Err.Error()
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, version, api, p.Path, status)
+		}
+		return w.Flush()
+	}}
+	list.Flags().StringVarP(&pluginDir, "dir", "d", "", "plugin directory (overrides config)")
+	plugins.AddCommand(list)
+	root.AddCommand(plugins)
 	var device, to, message string
 	var direct bool
 	var timeout time.Duration

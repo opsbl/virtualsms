@@ -14,7 +14,7 @@ $(error unknown plugin "$(PLUGIN)"; available: $(PLUGIN_NAMES))
 endif
 endif
 
-.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl
+.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl FORCE
 
 all: build
 
@@ -31,10 +31,14 @@ $(BUILD_DIR)/virtualsms: $(shell find cmd internal pkg -name '*.go') go.mod go.s
 	CGO_ENABLED=1 CC=$(CC) $(GO) build -o $@ ./cmd/virtualsms
 
 define plugin_rule
-$(BUILD_DIR)/plugins/$(1).so: $(wildcard plugins/$(1)/*.go) $(PLUGIN_SHARED_SOURCES) go.mod go.sum Makefile
+$(BUILD_DIR)/plugins/$(1).so: $(wildcard plugins/$(1)/*.go) $(PLUGIN_SHARED_SOURCES) go.mod go.sum Makefile $(BUILD_DIR)/plugins/.version
 	@mkdir -p $(BUILD_DIR)/plugins
-	CGO_ENABLED=1 CC=$(CC) $(GO) build -buildmode=plugin -o $$@ ./plugins/$(1)
+	CGO_ENABLED=1 CC=$(CC) $(GO) build -buildmode=plugin -ldflags "-X main.ProviderVersion=$(VERSION)" -o $$@ ./plugins/$(1)
 endef
+
+$(BUILD_DIR)/plugins/.version: FORCE
+	@mkdir -p $(dir $@)
+	@test -f $@ && test "$$(cat $@)" = "$(VERSION)" || printf '%s\n' "$(VERSION)" > $@
 
 $(foreach name,$(PLUGIN_NAMES),$(eval $(call plugin_rule,$(name))))
 

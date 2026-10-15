@@ -9,11 +9,12 @@ Zabbix → /dev/ttySMSn → 实例 → AT → Batch → provider.Provider
                                            └─ plugin.Open → pluginapi.Provider → 短信网关
 ```
 
-公开接口位于 `pkg/pluginapi`。插件是 `package main`，必须导出：
+公开接口位于 `pkg/pluginapi`。插件是 `package main`，其中 `ProviderVersion` 为可选字段，其余符号必须导出：
 
 ```go
 var APIVersion = pluginapi.Version
 var ProviderID = "ablemobile"
+var ProviderVersion = "dev" // 可选；make 构建时写入 VERSION
 
 func New(cfg pluginapi.Config) (pluginapi.Provider, error)
 ```
@@ -51,6 +52,8 @@ path = "/dev/ttySMS1"
 ```
 
 每个插件放在 `plugins/<名称>/main.go`；默认 `make` 自动发现并编译所有插件，`make plugin PLUGIN=<名称>` 只编译指定插件。`make musl` 使用 `musl-gcc`，也接受 `PLUGIN=<名称>`。宿主与插件不能混用不同编译产物。Go 原生插件要求 cgo 外部链接，musl 版的宿主与插件仍依赖 musl 动态运行时。完全静态链接的 musl 宿主无法使用 `plugin.Open`。musl 可降低对目标系统 glibc 版本的依赖，但它是 C 运行时，不代表零 C 依赖。
+
+使用 `virtualsms plugins list` 查看插件 ID、版本、API 版本、路径和加载状态。默认扫描 `/usr/lib/virtualsms/plugins`；`-d` 可直接指定目录，`-c` 可读取配置中的 `[plugins] dir`。未导出 `ProviderVersion` 的插件显示版本 `-`；无法加载的插件仍列出并显示错误。
 
 部署限制：Go 原生插件仅支持 Linux、FreeBSD 和 macOS，且宿主与插件需要相同的 Go 工具链、构建标签和共享依赖版本；VirtualSMS 的 PTY 与 systemd 部署当前面向 Linux。详见 [Go `plugin` 文档](https://pkg.go.dev/plugin)。
 
