@@ -1,7 +1,13 @@
 GO ?= go
 CC ?= cc
+DOCKER ?= docker
 VERSION ?= 0.1.0
 BUILD_DIR ?= build/native
+RPM_FLAVOR ?= native
+RPM_PLATFORM ?= linux/amd64
+GO_VERSION ?= 1.26.0
+GO_IMAGE ?= golang:$(GO_VERSION)
+CONTAINER_GOPROXY ?= https://goproxy.cn,direct
 PLUGIN_NAMES := $(patsubst plugins/%/main.go,%,$(wildcard plugins/*/main.go))
 SELECTED_PLUGINS := $(if $(PLUGIN),$(PLUGIN),$(PLUGIN_NAMES))
 ALL_PLUGIN_TARGETS := $(addprefix $(BUILD_DIR)/plugins/,$(addsuffix .so,$(PLUGIN_NAMES)))
@@ -14,7 +20,7 @@ $(error unknown plugin "$(PLUGIN)"; available: $(PLUGIN_NAMES))
 endif
 endif
 
-.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl FORCE
+.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl rpm-almalinux8 FORCE
 
 all: build
 
@@ -52,7 +58,11 @@ deb: $(BUILD_DIR)/virtualsms $(ALL_PLUGIN_TARGETS)
 	bash packaging/package-deb.sh $(BUILD_DIR) $(VERSION) native
 
 rpm: $(BUILD_DIR)/virtualsms $(ALL_PLUGIN_TARGETS)
-	bash packaging/package-rpm.sh $(BUILD_DIR) $(VERSION) native
+	bash packaging/package-rpm.sh $(BUILD_DIR) $(VERSION) $(RPM_FLAVOR)
+
+rpm-almalinux8:
+	$(DOCKER) build --platform $(RPM_PLATFORM) --build-arg GO_IMAGE=$(GO_IMAGE) -f packaging/docker/almalinux-8.10.Dockerfile -t virtualsms-rpm-builder:almalinux-8.10 .
+	$(DOCKER) run --rm --platform $(RPM_PLATFORM) --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOPROXY=$(CONTAINER_GOPROXY) -e GOCACHE=/src/build/.gocache-almalinux8 -e GOMODCACHE=/src/build/.gomodcache-almalinux8 -v "$$(pwd):/src" -w /src virtualsms-rpm-builder:almalinux-8.10 make -B rpm BUILD_DIR=build/almalinux8.10 VERSION=$(VERSION) RPM_FLAVOR=almalinux8
 
 deb-musl:
 	$(MAKE) build CC=musl-gcc BUILD_DIR=build/musl PLUGIN=
