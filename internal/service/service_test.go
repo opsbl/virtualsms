@@ -29,8 +29,8 @@ func TestShutdownDrainsQueuedSMS(t *testing.T) {
 	cfg := config.Config{
 		Metrics:   config.MetricsConfig{Listen: "127.0.0.1:0"},
 		Batch:     config.BatchConfig{Wait: "1h", AckMode: "queued"},
-		Providers: map[string]config.ProviderConfig{"gateway": {Type: "http", URL: server.URL}},
-		Devices:   []config.DeviceConfig{{Path: path, Provider: "gateway"}},
+		Instances: map[string]config.InstanceConfig{"gateway": {Provider: "http", Options: map[string]any{"url": server.URL}}},
+		Devices:   []config.DeviceConfig{{Path: path, Instance: "gateway"}},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

@@ -10,14 +10,14 @@ import (
 func TestDuplicateDevicePath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	content := `
-[providers.demo]
-type = "log"
+[instances.demo]
+provider = "log"
 [[devices]]
 path = "/tmp/ttySMS0"
-provider = "demo"
+instance = "demo"
 [[devices]]
 path = "/tmp/ttySMS0"
-provider = "demo"
+instance = "demo"
 `
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -32,14 +32,14 @@ func TestPluginDirectoryAndTypedOptions(t *testing.T) {
 	content := `
 [plugins]
 dir = "/usr/lib/virtualsms/plugins"
-[providers.demo]
-plugin = "example"
-[providers.demo.options]
+[instances.demo]
+provider = "example"
+[instances.demo.options]
 attempts = 2
 enabled = true
 [[devices]]
 path = "/tmp/ttySMS0"
-provider = "demo"
+instance = "demo"
 `
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ provider = "demo"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Plugins.Dir != "/usr/lib/virtualsms/plugins" || cfg.Providers["demo"].Options["attempts"] != int64(2) || cfg.Providers["demo"].Options["enabled"] != true {
+	if cfg.Plugins.Dir != "/usr/lib/virtualsms/plugins" || cfg.Instances["demo"].Options["attempts"] != int64(2) || cfg.Instances["demo"].Options["enabled"] != true {
 		t.Fatalf("unexpected plugin config: %+v", cfg)
 	}
 }

@@ -97,7 +97,7 @@ func TestDrainSubmitsPendingBatch(t *testing.T) {
 	}
 }
 
-func TestGroupsSameTextAndProvider(t *testing.T) {
+func TestGroupsSameTextByInstance(t *testing.T) {
 	first := captureProvider{calls: make(chan provider.Batch, 3)}
 	second := captureProvider{calls: make(chan provider.Batch, 1)}
 	b := New(context.Background(), map[string]provider.Provider{"first": first, "second": second}, 80*time.Millisecond, "sent", metrics.New())

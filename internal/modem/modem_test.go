@@ -31,7 +31,7 @@ func TestZabbixSerialSequence(t *testing.T) {
 		t.Run(fmt.Sprint(providerErr), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "ttySMS0")
 			p := captureProvider{messages: make(chan provider.Message, 1), err: providerErr}
-			m, err := Open(config.DeviceConfig{Path: path, Provider: "test"}, p, metrics.New())
+			m, err := Open(config.DeviceConfig{Path: path, Instance: "test"}, p, metrics.New())
 			if err != nil {
 				t.Fatal(err)
 			}

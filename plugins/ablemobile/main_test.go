@@ -70,3 +70,43 @@ func TestPluginRejectsUnknownOption(t *testing.T) {
 		t.Fatalf("expected unknown option error, got %v", err)
 	}
 }
+
+func TestTwoInstancesUseSeparateAccounts(t *testing.T) {
+	firstCalls := make(chan string, 1)
+	secondCalls := make(chan string, 1)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		firstCalls <- r.PostForm.Get("Username")
+	}))
+	defer firstServer.Close()
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		secondCalls <- r.PostForm.Get("Username")
+	}))
+	defer secondServer.Close()
+	first, err := New(pluginapi.Config{Name: "first", OptionsTOML: []byte(fmt.Sprintf("url = %q\nusername = 'account-a'\npassword = 'a'\n", firstServer.URL))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(pluginapi.Config{Name: "second", OptionsTOML: []byte(fmt.Sprintf("url = %q\nusername = 'account-b'\npassword = 'b'\n", secondServer.URL))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := pluginapi.Batch{To: []string{"111"}, Text: "same text"}
+	if err := first.SendBatch(context.Background(), batch)[0]; err != nil {
+		t.Fatal(err)
+	}
+	if err := second.SendBatch(context.Background(), batch)[0]; err != nil {
+		t.Fatal(err)
+	}
+	if got := <-firstCalls; got != "account-a" {
+		t.Errorf("first account = %q", got)
+	}
+	if got := <-secondCalls; got != "account-b" {
+		t.Errorf("second account = %q", got)
+	}
+}

@@ -21,10 +21,16 @@ func (p pluginAdapter) SendBatch(ctx context.Context, b Batch) []error {
 	return p.provider.SendBatch(ctx, pluginapi.Batch{To: b.To, Text: b.Text})
 }
 
-func discoverPlugins(dir string, configs map[string]config.ProviderConfig) (map[string]string, error) {
+type pluginDefinition struct {
+	path    string
+	factory pluginapi.Factory
+}
+
+// discoverPlugins reads provider IDs from plugin exports; filenames are not identifiers.
+func discoverPlugins(dir string, instances map[string]config.InstanceConfig) (map[string]pluginDefinition, error) {
 	needed := false
-	for _, cfg := range configs {
-		if cfg.Plugin != "" {
+	for _, instance := range instances {
+		if instance.Provider != "log" && instance.Provider != "http" {
 			needed = true
 			break
 		}
@@ -39,50 +45,59 @@ func discoverPlugins(dir string, configs map[string]config.ProviderConfig) (map[
 	if err != nil {
 		return nil, fmt.Errorf("read plugin directory %q: %w", dir, err)
 	}
-	available := make(map[string]string)
+	available := make(map[string]pluginDefinition)
 	for _, entry := range entries {
 		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".so") {
 			continue
 		}
-		name := strings.TrimSuffix(entry.Name(), ".so")
-		if name != "" {
-			available[name] = filepath.Join(dir, entry.Name())
+		path := filepath.Join(dir, entry.Name())
+		p, err := plugin.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("open plugin %q: %w", path, err)
 		}
+		versionSymbol, err := p.Lookup("APIVersion")
+		if err != nil {
+			return nil, fmt.Errorf("plugin %q: missing APIVersion: %w", path, err)
+		}
+		version, ok := versionSymbol.(*int)
+		if !ok || *version != pluginapi.Version {
+			return nil, fmt.Errorf("plugin %q: incompatible API version", path)
+		}
+		idSymbol, err := p.Lookup("ProviderID")
+		if err != nil {
+			return nil, fmt.Errorf("plugin %q: missing ProviderID: %w", path, err)
+		}
+		id, ok := idSymbol.(*string)
+		if !ok || *id == "" || *id == "log" || *id == "http" {
+			return nil, fmt.Errorf("plugin %q: invalid or reserved ProviderID", path)
+		}
+		if previous, exists := available[*id]; exists {
+			return nil, fmt.Errorf("duplicate ProviderID %q in %q and %q", *id, previous.path, path)
+		}
+		symbol, err := p.Lookup("New")
+		if err != nil {
+			return nil, fmt.Errorf("plugin %q: missing New factory: %w", path, err)
+		}
+		factory, ok := symbol.(func(pluginapi.Config) (pluginapi.Provider, error))
+		if !ok {
+			return nil, fmt.Errorf("plugin %q: New must be func(pluginapi.Config) (pluginapi.Provider, error)", path)
+		}
+		available[*id] = pluginDefinition{path: path, factory: factory}
 	}
 	return available, nil
 }
 
-func loadPlugin(path, name string, options map[string]any) (Provider, error) {
+func newPlugin(def pluginDefinition, id, name string, options map[string]any) (Provider, error) {
 	var encoded bytes.Buffer
 	if err := toml.NewEncoder(&encoded).Encode(options); err != nil {
-		return nil, fmt.Errorf("provider %q: encode plugin options: %w", name, err)
+		return nil, fmt.Errorf("instance %q: encode options: %w", name, err)
 	}
-	p, err := plugin.Open(path)
+	instance, err := def.factory(pluginapi.Config{Name: name, OptionsTOML: encoded.Bytes(), Logger: slog.Default().With("instance", name, "provider", id)})
 	if err != nil {
-		return nil, fmt.Errorf("open plugin %q: %w", path, err)
-	}
-	versionSymbol, err := p.Lookup("APIVersion")
-	if err != nil {
-		return nil, fmt.Errorf("plugin %q: missing APIVersion: %w", path, err)
-	}
-	version, ok := versionSymbol.(*int)
-	if !ok || *version != pluginapi.Version {
-		return nil, fmt.Errorf("plugin %q: incompatible API version", path)
-	}
-	symbol, err := p.Lookup("New")
-	if err != nil {
-		return nil, fmt.Errorf("plugin %q: missing New factory: %w", path, err)
-	}
-	factory, ok := symbol.(func(pluginapi.Config) (pluginapi.Provider, error))
-	if !ok {
-		return nil, fmt.Errorf("plugin %q: New must be func(pluginapi.Config) (pluginapi.Provider, error)", path)
-	}
-	instance, err := factory(pluginapi.Config{Name: name, OptionsTOML: encoded.Bytes(), Logger: slog.Default().With("provider", name, "plugin", strings.TrimSuffix(filepath.Base(path), ".so"))})
-	if err != nil {
-		return nil, fmt.Errorf("plugin %q: %w", path, err)
+		return nil, fmt.Errorf("instance %q (%s): %w", name, id, err)
 	}
 	if instance == nil {
-		return nil, fmt.Errorf("plugin %q: New returned nil", path)
+		return nil, fmt.Errorf("instance %q (%s): New returned nil", name, id)
 	}
 	return pluginAdapter{provider: instance}, nil
 }

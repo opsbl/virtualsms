@@ -31,7 +31,7 @@ func Run(parent context.Context, c config.Config) error {
 		level = slog.LevelError
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
-	providers, err := provider.NewWithPlugins(c.Providers, c.Plugins.Dir)
+	instances, err := provider.NewWithPlugins(c.Instances, c.Plugins.Dir)
 	if err != nil {
 		return err
 	}
@@ -52,11 +52,11 @@ func Run(parent context.Context, c config.Config) error {
 			return err
 		}
 	}
-	batcher := batch.New(batchCtx, providers, wait, c.Batch.AckMode, m)
-	slog.Info("VirtualSMS starting", "devices", len(c.Devices), "providers", len(providers), "batch_wait", wait.String(), "ack_mode", c.Batch.AckMode, "metrics_listen", c.Metrics.Listen)
+	batcher := batch.New(batchCtx, instances, wait, c.Batch.AckMode, m)
+	slog.Info("VirtualSMS starting", "devices", len(c.Devices), "instances", len(instances), "batch_wait", wait.String(), "ack_mode", c.Batch.AckMode, "metrics_listen", c.Metrics.Listen)
 	modems := make([]*modem.Modem, 0, len(c.Devices))
 	for _, d := range c.Devices {
-		md, err := modem.Open(d, batcher.For(d.Provider), m)
+		md, err := modem.Open(d, batcher.For(d.Instance), m)
 		if err != nil {
 			slog.Error("virtual modem startup failed", "device", d.Path, "error", err)
 			for _, previous := range modems {
@@ -65,8 +65,8 @@ func Run(parent context.Context, c config.Config) error {
 			return fmt.Errorf("device %s: %w", d.Path, err)
 		}
 		modems = append(modems, md)
-		m.DeviceUp(d.Path, d.Provider, true)
-		slog.Info("virtual modem ready", "device", d.Path, "pty", md.SlaveName(), "provider", d.Provider)
+		m.DeviceUp(d.Path, d.Instance, true)
+		slog.Info("virtual modem ready", "device", d.Path, "pty", md.SlaveName(), "instance", d.Instance)
 	}
 	errCh := make(chan error, len(modems)+1)
 	var workers sync.WaitGroup
@@ -76,7 +76,7 @@ func Run(parent context.Context, c config.Config) error {
 		go func() {
 			defer workers.Done()
 			err := md.Serve(ctx)
-			m.DeviceUp(d.Path, d.Provider, false)
+			m.DeviceUp(d.Path, d.Instance, false)
 			if err != nil {
 				errCh <- fmt.Errorf("device %s: %w", d.Path, err)
 			}

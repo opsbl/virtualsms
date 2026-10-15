@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -16,7 +15,7 @@ type Config struct {
 	Batch     BatchConfig               `toml:"batch"`
 	Logging   LoggingConfig             `toml:"logging"`
 	Plugins   PluginConfig              `toml:"plugins"`
-	Providers map[string]ProviderConfig `toml:"providers"`
+	Instances map[string]InstanceConfig `toml:"instances"`
 	Devices   []DeviceConfig            `toml:"devices"`
 }
 
@@ -36,18 +35,14 @@ type PluginConfig struct {
 	Dir string `toml:"dir"`
 }
 
-type ProviderConfig struct {
-	Type    string         `toml:"type"`
-	Plugin  string         `toml:"plugin"`
-	Options map[string]any `toml:"options"`
-	URL     string         `toml:"url"`
-	Token   string         `toml:"token"`
-	Timeout string         `toml:"timeout"`
+type InstanceConfig struct {
+	Provider string         `toml:"provider"`
+	Options  map[string]any `toml:"options"`
 }
 
 type DeviceConfig struct {
 	Path     string `toml:"path"`
-	Provider string `toml:"provider"`
+	Instance string `toml:"instance"`
 	Group    string `toml:"group"`
 	Mode     uint32 `toml:"mode"`
 }
@@ -96,8 +91,8 @@ func Load(path string) (Config, error) {
 			return c, fmt.Errorf("duplicate device path %q", d.Path)
 		}
 		seen[d.Path] = true
-		if _, ok := c.Providers[d.Provider]; !ok {
-			return c, fmt.Errorf("device %q refers to unknown provider %q", d.Path, d.Provider)
+		if _, ok := c.Instances[d.Instance]; !ok {
+			return c, fmt.Errorf("device %q refers to unknown instance %q", d.Path, d.Instance)
 		}
 		if d.Mode > 0777 {
 			return c, fmt.Errorf("device %q has invalid mode", d.Path)
@@ -108,30 +103,12 @@ func Load(path string) (Config, error) {
 			}
 		}
 	}
-	for name, p := range c.Providers {
-		if p.Plugin != "" {
-			if p.Type != "" {
-				return c, fmt.Errorf("provider %q cannot set both type and plugin", name)
-			}
-			if c.Plugins.Dir == "" {
-				return c, fmt.Errorf("provider %q requires plugins.dir", name)
-			}
-			continue
+	for name, instance := range c.Instances {
+		if instance.Provider == "" {
+			return c, fmt.Errorf("instance %q requires provider", name)
 		}
-		switch p.Type {
-		case "log":
-		case "http":
-			if !strings.HasPrefix(p.URL, "https://") && !strings.HasPrefix(p.URL, "http://") {
-				return c, fmt.Errorf("provider %q needs an HTTP(S) url", name)
-			}
-		default:
-			return c, fmt.Errorf("provider %q has unsupported type %q", name, p.Type)
-		}
-		if p.Timeout != "" {
-			timeout, err := time.ParseDuration(p.Timeout)
-			if err != nil || timeout <= 0 {
-				return c, fmt.Errorf("provider %q: invalid timeout %q", name, p.Timeout)
-			}
+		if instance.Provider != "log" && instance.Provider != "http" && c.Plugins.Dir == "" {
+			return c, fmt.Errorf("instance %q requires plugins.dir", name)
 		}
 	}
 	if c.Plugins.Dir != "" && (!filepath.IsAbs(c.Plugins.Dir) || filepath.Clean(c.Plugins.Dir) != c.Plugins.Dir) {

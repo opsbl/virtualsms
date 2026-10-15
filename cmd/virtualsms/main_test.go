@@ -33,7 +33,7 @@ func (s testSender) Send(_ context.Context, m provider.Message) (provider.Ack, e
 func TestSerialTestCommandNeedsNoConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ttySMS0")
 	sender := testSender{messages: make(chan provider.Message, 1)}
-	m, err := modem.Open(config.DeviceConfig{Path: path, Provider: "test"}, sender, metrics.New())
+	m, err := modem.Open(config.DeviceConfig{Path: path, Instance: "test"}, sender, metrics.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestSerialTestBatchesSequentialRecipients(t *testing.T) {
 	meter := metrics.New()
 	batcher := batch.New(ctx, map[string]provider.Provider{"test": p}, time.Second, "queued", meter)
 	defer batcher.Close()
-	m, err := modem.Open(config.DeviceConfig{Path: path, Provider: "test"}, batcher.For("test"), meter)
+	m, err := modem.Open(config.DeviceConfig{Path: path, Instance: "test"}, batcher.For("test"), meter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestSerialTestBatchesSequentialRecipients(t *testing.T) {
 func TestDirectTestShortFlags(t *testing.T) {
 	device := filepath.Join(t.TempDir(), "ttySMS0")
 	path := filepath.Join(t.TempDir(), "config.toml")
-	content := "[providers.dryrun]\ntype = \"log\"\n[[devices]]\npath = \"" + device + "\"\nprovider = \"dryrun\"\n"
+	content := "[instances.dryrun]\nprovider = \"log\"\n[[devices]]\npath = \"" + device + "\"\ninstance = \"dryrun\"\n"
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}

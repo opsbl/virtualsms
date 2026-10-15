@@ -13,7 +13,7 @@ import (
 	"github.com/opsbl/virtualsms/internal/provider"
 )
 
-type key struct{ provider, text string }
+type key struct{ instance, text string }
 type pending struct {
 	id      uint64
 	created time.Time
@@ -22,10 +22,10 @@ type pending struct {
 	timer   *time.Timer
 }
 
-// Batcher groups identical messages for the same provider from the first arrival.
+// Batcher groups identical messages for the same instance from the first arrival.
 type Batcher struct {
 	ctx       context.Context
-	providers map[string]provider.Provider
+	instances map[string]provider.Provider
 	wait      time.Duration
 	ackMode   string
 	metrics   *metrics.Metrics
@@ -36,18 +36,18 @@ type Batcher struct {
 	sequence  atomic.Uint64
 }
 
-func New(ctx context.Context, providers map[string]provider.Provider, wait time.Duration, ackMode string, m *metrics.Metrics) *Batcher {
-	return &Batcher{ctx: ctx, providers: providers, wait: wait, ackMode: ackMode, metrics: m, groups: make(map[key]*pending)}
+func New(ctx context.Context, instances map[string]provider.Provider, wait time.Duration, ackMode string, m *metrics.Metrics) *Batcher {
+	return &Batcher{ctx: ctx, instances: instances, wait: wait, ackMode: ackMode, metrics: m, groups: make(map[key]*pending)}
 }
 
 type Sender struct {
 	batcher  *Batcher
-	provider string
+	instance string
 }
 
-func (b *Batcher) For(name string) Sender { return Sender{batcher: b, provider: name} }
+func (b *Batcher) For(name string) Sender { return Sender{batcher: b, instance: name} }
 func (s Sender) Send(ctx context.Context, msg provider.Message) (provider.Ack, error) {
-	return s.batcher.submit(ctx, s.provider, msg)
+	return s.batcher.submit(ctx, s.instance, msg)
 }
 
 func (b *Batcher) submit(ctx context.Context, name string, msg provider.Message) (provider.Ack, error) {
@@ -57,7 +57,7 @@ func (b *Batcher) submit(ctx context.Context, name string, msg provider.Message)
 	if err := b.ctx.Err(); err != nil {
 		return provider.Ack{}, err
 	}
-	k := key{provider: name, text: msg.Text}
+	k := key{instance: name, text: msg.Text}
 	waiter := make(chan error, 1)
 	b.mu.Lock()
 	if b.closed {
@@ -77,7 +77,7 @@ func (b *Batcher) submit(ctx context.Context, name string, msg provider.Message)
 	}
 	count := len(p.to)
 	b.mu.Unlock()
-	slog.Info("SMS queued", "batch_id", p.id, "provider", name, "to", msg.To, "recipients", count, "content_hash", hash(msg.Text))
+	slog.Info("SMS queued", "batch_id", p.id, "instance", name, "to", msg.To, "recipients", count, "content_hash", hash(msg.Text))
 	if b.ackMode != "sent" {
 		return provider.Ack{Queued: true}, nil
 	}
@@ -105,9 +105,9 @@ func (b *Batcher) flush(k key, p *pending) {
 func (b *Batcher) deliver(ctx context.Context, k key, p *pending) {
 	defer b.workers.Done()
 	to := p.to
-	slog.Info("SMS batch submitting", "batch_id", p.id, "provider", k.provider, "recipients", len(to), "wait_ms", time.Since(p.created).Milliseconds(), "content_hash", hash(k.text))
+	slog.Info("SMS batch submitting", "batch_id", p.id, "instance", k.instance, "recipients", len(to), "wait_ms", time.Since(p.created).Milliseconds(), "content_hash", hash(k.text))
 	start := time.Now()
-	results := b.providers[k.provider].SendBatch(ctx, provider.Batch{To: to, Text: k.text})
+	results := b.instances[k.instance].SendBatch(ctx, provider.Batch{To: to, Text: k.text})
 	if len(results) != len(to) {
 		results = make([]error, len(to))
 		for i := range results {
@@ -116,17 +116,17 @@ func (b *Batcher) deliver(ctx context.Context, k key, p *pending) {
 	}
 	failed := 0
 	for i, result := range results {
-		b.metrics.RecordDelivery(k.provider, result)
+		b.metrics.RecordDelivery(k.instance, result)
 		if result != nil {
 			failed++
-			slog.Error("SMS recipient delivery failed", "batch_id", p.id, "provider", k.provider, "to", to[i], "error", result)
+			slog.Error("SMS recipient delivery failed", "batch_id", p.id, "instance", k.instance, "to", to[i], "error", result)
 		}
 	}
-	b.metrics.RecordBatch(k.provider, len(to), failed, time.Since(start))
+	b.metrics.RecordBatch(k.instance, len(to), failed, time.Since(start))
 	if failed > 0 {
-		slog.Error("SMS batch completed with failures", "batch_id", p.id, "provider", k.provider, "recipients", len(to), "failed", failed, "duration_ms", time.Since(start).Milliseconds())
+		slog.Error("SMS batch completed with failures", "batch_id", p.id, "instance", k.instance, "recipients", len(to), "failed", failed, "duration_ms", time.Since(start).Milliseconds())
 	} else {
-		slog.Info("SMS batch accepted", "batch_id", p.id, "provider", k.provider, "recipients", len(to), "duration_ms", time.Since(start).Milliseconds())
+		slog.Info("SMS batch accepted", "batch_id", p.id, "instance", k.instance, "recipients", len(to), "duration_ms", time.Since(start).Milliseconds())
 	}
 	for i, waiter := range p.waiters {
 		waiter <- results[i]

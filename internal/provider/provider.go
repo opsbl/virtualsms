@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/opsbl/virtualsms/internal/config"
@@ -51,7 +52,7 @@ type Provider interface {
 type logProvider struct{ name string }
 
 func (p logProvider) SendBatch(_ context.Context, b Batch) []error {
-	slog.Info("SMS batch accepted by log provider", "provider", p.name, "recipients", b.To, "text", b.Text)
+	slog.Info("SMS batch accepted by log provider", "instance", p.name, "provider", "log", "recipients", b.To, "text", b.Text)
 	return make([]error, len(b.To))
 }
 
@@ -90,45 +91,76 @@ func (p httpProvider) sendOne(ctx context.Context, m Message) error {
 	return nil
 }
 
-func New(configs map[string]config.ProviderConfig) (map[string]Provider, error) {
+func New(configs map[string]config.InstanceConfig) (map[string]Provider, error) {
 	return NewWithPlugins(configs, "")
 }
 
-func NewWithPlugins(configs map[string]config.ProviderConfig, pluginDir string) (map[string]Provider, error) {
+func NewWithPlugins(configs map[string]config.InstanceConfig, pluginDir string) (map[string]Provider, error) {
 	available, err := discoverPlugins(pluginDir, configs)
 	if err != nil {
 		return nil, err
 	}
 	out := make(map[string]Provider, len(configs))
-	for name, p := range configs {
-		if p.Plugin != "" {
-			path, ok := available[p.Plugin]
-			if !ok {
-				return nil, fmt.Errorf("provider %q: plugin %q not found in %q", name, p.Plugin, pluginDir)
-			}
-			instance, err := loadPlugin(path, name, p.Options)
-			if err != nil {
-				return nil, fmt.Errorf("provider %q: %w", name, err)
-			}
-			out[name] = instance
-			continue
-		}
-		timeout := 30 * time.Second
-		if p.Timeout != "" {
-			var err error
-			timeout, err = time.ParseDuration(p.Timeout)
-			if err != nil || timeout <= 0 {
-				return nil, fmt.Errorf("provider %q: invalid timeout %q", name, p.Timeout)
-			}
-		}
-		switch p.Type {
+	for name, cfg := range configs {
+		switch cfg.Provider {
 		case "log":
+			if len(cfg.Options) != 0 {
+				return nil, fmt.Errorf("instance %q: log has no options", name)
+			}
 			out[name] = logProvider{name: name}
 		case "http":
-			out[name] = httpProvider{url: p.URL, token: p.Token, client: &http.Client{Timeout: timeout}}
+			for key := range cfg.Options {
+				if key != "url" && key != "token" && key != "timeout" {
+					return nil, fmt.Errorf("instance %q: unknown HTTP option %q", name, key)
+				}
+			}
+			urlValue, err := stringOption(name, cfg.Options, "url")
+			if err != nil {
+				return nil, err
+			}
+			u, err := url.Parse(urlValue)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return nil, fmt.Errorf("instance %q: HTTP url must be HTTP(S)", name)
+			}
+			token, err := stringOption(name, cfg.Options, "token")
+			if err != nil {
+				return nil, err
+			}
+			timeoutValue, err := stringOption(name, cfg.Options, "timeout")
+			if err != nil {
+				return nil, err
+			}
+			timeout := 30 * time.Second
+			if timeoutValue != "" {
+				timeout, err = time.ParseDuration(timeoutValue)
+				if err != nil || timeout <= 0 {
+					return nil, fmt.Errorf("instance %q: invalid timeout %q", name, timeoutValue)
+				}
+			}
+			out[name] = httpProvider{url: urlValue, token: token, client: &http.Client{Timeout: timeout}}
 		default:
-			return nil, fmt.Errorf("provider %q has unsupported type %q", name, p.Type)
+			def, ok := available[cfg.Provider]
+			if !ok {
+				return nil, fmt.Errorf("instance %q: provider %q not found in %q", name, cfg.Provider, pluginDir)
+			}
+			instance, err := newPlugin(def, cfg.Provider, name, cfg.Options)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = instance
 		}
 	}
 	return out, nil
+}
+
+func stringOption(instance string, options map[string]any, key string) (string, error) {
+	value, ok := options[key]
+	if !ok {
+		return "", nil
+	}
+	s, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("instance %q: option %q must be a string", instance, key)
+	}
+	return s, nil
 }

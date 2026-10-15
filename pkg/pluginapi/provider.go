@@ -6,7 +6,7 @@ import (
 	"log/slog"
 )
 
-const Version = 1
+const Version = 2
 
 type Batch struct {
 	To   []string

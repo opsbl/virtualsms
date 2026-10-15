@@ -29,7 +29,7 @@ func command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if _, err := provider.NewWithPlugins(c.Providers, c.Plugins.Dir); err != nil {
+		if _, err := provider.NewWithPlugins(c.Instances, c.Plugins.Dir); err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "configuration OK")
@@ -62,13 +62,13 @@ func command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		providers, err := provider.NewWithPlugins(c.Providers, c.Plugins.Dir)
+		instances, err := provider.NewWithPlugins(c.Instances, c.Plugins.Dir)
 		if err != nil {
 			return err
 		}
 		for _, d := range c.Devices {
 			if d.Path == device {
-				if err := providers[d.Provider].SendBatch(ctx, provider.Batch{To: []string{to}, Text: message})[0]; err != nil {
+				if err := instances[d.Instance].SendBatch(ctx, provider.Batch{To: []string{to}, Text: message})[0]; err != nil {
 					return err
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), "SMS accepted by provider")

@@ -22,7 +22,7 @@ func TestHTTPProvider(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer server.Close()
-	p, err := New(map[string]config.ProviderConfig{"gateway": {Type: "http", URL: server.URL, Token: "secret"}})
+	p, err := New(map[string]config.InstanceConfig{"gateway": {Provider: "http", Options: map[string]any{"url": server.URL, "token": "secret"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

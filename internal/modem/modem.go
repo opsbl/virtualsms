@@ -186,16 +186,16 @@ func (m *Modem) consume(ctx context.Context, b byte) {
 				return
 			}
 			start := time.Now()
-			slog.Info("SMS received from AT client", "device", m.device.Path, "provider", m.device.Provider, "to", msg.To, "message_bytes", len(msg.Text))
+			slog.Info("SMS received from AT client", "device", m.device.Path, "instance", m.device.Instance, "to", msg.To, "message_bytes", len(msg.Text))
 			ack, err := m.sender.Send(ctx, msg)
-			m.metrics.Record(m.device.Path, m.device.Provider, ack.Queued, err, time.Since(start))
+			m.metrics.Record(m.device.Path, m.device.Instance, ack.Queued, err, time.Since(start))
 			if err != nil {
-				slog.Error("SMS delivery failed", "device", m.device.Path, "provider", m.device.Provider, "to", msg.To, "elapsed_ms", time.Since(start).Milliseconds(), "error", err)
+				slog.Error("SMS delivery failed", "device", m.device.Path, "instance", m.device.Instance, "to", msg.To, "elapsed_ms", time.Since(start).Milliseconds(), "error", err)
 				m.write("\r\n+CMS ERROR: 500\r\n")
 				return
 			}
 			m.write(fmt.Sprintf("\r\n+CMGS: %d\r\n\r\nOK\r\n", m.sequence.Add(1)))
-			slog.Info("SMS acknowledged to AT client", "device", m.device.Path, "provider", m.device.Provider, "to", msg.To, "queued", ack.Queued, "elapsed_ms", time.Since(start).Milliseconds())
+			slog.Info("SMS acknowledged to AT client", "device", m.device.Path, "instance", m.device.Instance, "to", msg.To, "queued", ack.Queued, "elapsed_ms", time.Since(start).Milliseconds())
 			return
 		}
 		if len(m.message) >= 65535 {
