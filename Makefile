@@ -8,6 +8,8 @@ RPM_PLATFORM ?= linux/amd64
 GO_VERSION ?= 1.26.0
 GO_IMAGE ?= golang:$(GO_VERSION)
 CONTAINER_GOPROXY ?= https://goproxy.cn,direct
+ALMA8_IMAGE ?= almalinux:8.10
+ALMA9_IMAGE ?= almalinux:9
 PLUGIN_NAMES := $(patsubst plugins/%/main.go,%,$(wildcard plugins/*/main.go))
 SELECTED_PLUGINS := $(if $(PLUGIN),$(PLUGIN),$(PLUGIN_NAMES))
 ALL_PLUGIN_TARGETS := $(addprefix $(BUILD_DIR)/plugins/,$(addsuffix .so,$(PLUGIN_NAMES)))
@@ -20,7 +22,7 @@ $(error unknown plugin "$(PLUGIN)"; available: $(PLUGIN_NAMES))
 endif
 endif
 
-.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl rpm-almalinux8 FORCE
+.PHONY: all build plugins plugin musl test deb rpm deb-musl rpm-musl almalinux8 almalinux9 FORCE
 
 all: build
 
@@ -60,9 +62,14 @@ deb: $(BUILD_DIR)/virtualsms $(ALL_PLUGIN_TARGETS)
 rpm: $(BUILD_DIR)/virtualsms $(ALL_PLUGIN_TARGETS)
 	bash packaging/package-rpm.sh $(BUILD_DIR) $(VERSION) $(RPM_FLAVOR)
 
-rpm-almalinux8:
-	$(DOCKER) build --platform $(RPM_PLATFORM) --build-arg GO_IMAGE=$(GO_IMAGE) -f packaging/docker/almalinux-8.10.Dockerfile -t virtualsms-rpm-builder:almalinux-8.10 .
-	$(DOCKER) run --rm --platform $(RPM_PLATFORM) --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOPROXY=$(CONTAINER_GOPROXY) -e GOCACHE=/src/build/.gocache-almalinux8 -e GOMODCACHE=/src/build/.gomodcache-almalinux8 -v "$$(pwd):/src" -w /src virtualsms-rpm-builder:almalinux-8.10 make -B rpm BUILD_DIR=build/almalinux8.10 VERSION=$(VERSION) RPM_FLAVOR=almalinux8
+almalinux8: ALMA_IMAGE := $(ALMA8_IMAGE)
+almalinux8: ALMA_FLAVOR := almalinux8
+almalinux9: ALMA_IMAGE := $(ALMA9_IMAGE)
+almalinux9: ALMA_FLAVOR := almalinux9
+
+almalinux8 almalinux9:
+	$(DOCKER) build --platform $(RPM_PLATFORM) --build-arg GO_IMAGE=$(GO_IMAGE) --build-arg ALMA_IMAGE=$(ALMA_IMAGE) -f packaging/docker/almalinux.Dockerfile -t virtualsms-rpm-builder:$(ALMA_FLAVOR) .
+	$(DOCKER) run --rm --platform $(RPM_PLATFORM) --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOPROXY=$(CONTAINER_GOPROXY) -e GOCACHE=/src/build/.gocache-$(ALMA_FLAVOR) -e GOMODCACHE=/src/build/.gomodcache-$(ALMA_FLAVOR) -v "$$(pwd):/src" -w /src virtualsms-rpm-builder:$(ALMA_FLAVOR) make -B rpm BUILD_DIR=build/$(ALMA_FLAVOR) VERSION=$(VERSION) RPM_FLAVOR=$(ALMA_FLAVOR)
 
 deb-musl:
 	$(MAKE) build CC=musl-gcc BUILD_DIR=build/musl PLUGIN=

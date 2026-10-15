@@ -1,7 +1,8 @@
 ARG GO_IMAGE=golang:1.26.0
+ARG ALMA_IMAGE=almalinux:8.10
 FROM ${GO_IMAGE} AS go-toolchain
 
-FROM almalinux:8.10
+FROM ${ALMA_IMAGE}
 
 RUN dnf -y install gcc make rpm-build && dnf clean all
 
